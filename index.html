@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EduScheduler — Intelligent Timetable Generator</title>
+  <meta name="description" content="Generate optimal weekly class schedules for educational institutions. Upload your dataset and get a conflict-free timetable instantly." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Background Mesh -->
+<div class="bg-mesh" aria-hidden="true"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast" role="alert" aria-live="polite">
+  <span class="toast-icon">✓</span>
+  <span class="toast-msg"></span>
+</div>
+
+<div id="app">
+
+  <!-- ── HEADER ── -->
+  <header class="site-header">
+    <div class="logo">
+      <div class="logo-icon" aria-hidden="true">📅</div>
+      <div class="logo-text">
+        <h1>EduScheduler</h1>
+        <p>Intelligent Timetable Generator</p>
+      </div>
+    </div>
+    <div class="header-badge" aria-label="Status: Online">AI-Powered Scheduler</div>
+  </header>
+
+  <!-- ── HERO ── -->
+  <section class="hero animate-in" aria-labelledby="hero-heading">
+    <div class="hero-eyebrow" aria-hidden="true">✦ DAA Mini Project</div>
+    <h2 id="hero-heading">
+      Smarter Schedules,<br/>
+      <span class="gradient-text">Zero Conflicts.</span>
+    </h2>
+    <p>Upload your institution's dataset and generate optimized weekly timetables using a constraint-satisfaction algorithm — in seconds.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-lg" onclick="document.getElementById('upload-zone').click()" id="hero-upload-btn">
+        📂 Upload Dataset
+      </button>
+      <button class="btn btn-secondary btn-lg" id="load-sample-btn">
+        🔬 Try Sample Data
+      </button>
+    </div>
+  </section>
+
+  <!-- ── SAVED SCHEDULES HISTORY ── -->
+  <section class="section animate-in" id="history-section" aria-labelledby="history-heading">
+    <div class="section-header">
+      <div class="section-number" style="background:linear-gradient(135deg,#00d4aa,#38bdf8);">🗄</div>
+      <div>
+        <div class="section-title" id="history-heading">Saved Schedules</div>
+        <div class="section-sub">Previously generated timetables stored in MongoDB</div>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="loadHistory()" style="margin-left:auto;">↺ Refresh</button>
+    </div>
+    <div class="card">
+      <div id="history-list">
+        <p style="color:var(--text-muted);font-size:0.85rem;padding:12px 0;">Connecting to database...</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STEP 1: UPLOAD ── -->
+
+  <section class="section animate-in delay-1" id="upload-section" aria-labelledby="upload-heading">
+    <div class="section-header">
+      <div class="section-number">1</div>
+      <div>
+        <div class="section-title" id="upload-heading">Upload Dataset</div>
+        <div class="section-sub">Provide a .txt file with your institution's scheduling data</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="upload-zone" id="upload-zone" role="button" tabindex="0" aria-label="Click or drag to upload .txt file"
+           onkeydown="if(event.key==='Enter'||event.key===' ')this.click()">
+        <div class="upload-icon" aria-hidden="true">📄</div>
+        <h3>Drop your .txt file here</h3>
+        <p>or click anywhere in this box to browse</p>
+        <button class="btn btn-secondary" onclick="event.stopPropagation();document.getElementById('file-input').click()" id="browse-btn">
+          📁 Browse Files
+        </button>
+        <input type="file" id="file-input" accept=".txt" aria-label="Upload text file" />
+      </div>
+
+      <!-- Format Guide -->
+      <div class="format-guide">
+        <button class="format-guide-toggle" id="guide-toggle" aria-expanded="false" aria-controls="guide-body">
+          <span>📋 View expected .txt file format</span>
+          <span class="icon" aria-hidden="true">▾</span>
+        </button>
+        <div class="format-guide-body" id="guide-body" role="region">
+          <pre>[SUBJECTS]
+Mathematics
+Physics
+Chemistry
+Computer Science
+
+[FACULTY]
+Dr. A. Sharma  | Mathematics, Physics
+Dr. B. Patel   | Chemistry
+
+[CLASSROOMS]
+Room 101  | 45
+Lab A     | 30
+
+[TIMESLOTS]
+Monday    | 09:00-10:00, 10:00-11:00, 11:15-12:15
+Tuesday   | 09:00-10:00, 10:00-11:00
+
+[CLASSES]
+Class 10-A | 42
+Class 10-B | 38
+
+[LECTURES_PER_WEEK]
+Mathematics | 5
+Physics     | 4</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STEP 2: CONFIGURATION ── -->
+  <section class="section animate-in delay-2" id="config-section" aria-labelledby="config-heading">
+    <div class="section-header">
+      <div class="section-number">2</div>
+      <div>
+        <div class="section-title" id="config-heading">Review & Configure</div>
+        <div class="section-sub">Verify parsed data and adjust scheduling parameters</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <p class="preview-label" style="margin-bottom:16px;">📊 Parsed Dataset Preview</p>
+      <div class="data-preview">
+        <div class="preview-group">
+          <div class="preview-label">Subjects</div>
+          <div class="chips" id="preview-subjects"></div>
+        </div>
+        <div class="preview-group">
+          <div class="preview-label">Faculty</div>
+          <div class="chips" id="preview-faculty"></div>
+        </div>
+        <div class="preview-group">
+          <div class="preview-label">Classrooms</div>
+          <div class="chips" id="preview-rooms"></div>
+        </div>
+        <div class="preview-group">
+          <div class="preview-label">Time Slots</div>
+          <div class="chips" id="preview-slots"></div>
+        </div>
+        <div class="preview-group">
+          <div class="preview-label">Classes</div>
+          <div class="chips" id="preview-classes"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <p class="preview-label" style="margin-bottom:16px;">⚙️ Scheduling Parameters</p>
+      <div class="config-grid">
+        <div class="config-item">
+          <label for="algo-mode">Algorithm Mode</label>
+          <select id="algo-mode">
+            <option value="fast">⚡ Fast — Quick generation, fewer optimizations</option>
+            <option value="balanced" selected>⚖️ Balanced — Recommended for most cases</option>
+            <option value="thorough">🔬 Thorough — Maximum conflict resolution</option>
+          </select>
+        </div>
+        <div class="config-item">
+          <label>Total Available Slots</label>
+          <input type="text" id="slot-summary" readonly placeholder="Calculated after loading" style="opacity:0.6;" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="preview-label" style="margin-bottom:16px;">📚 Lectures Per Week (per class)</p>
+      <div style="overflow-x:auto;">
+        <table class="lpw-table">
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Lectures / Week</th>
+            </tr>
+          </thead>
+          <tbody id="lpw-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── STEP 3: GENERATE ── -->
+  <section class="section animate-in delay-3" id="generate-section" aria-labelledby="generate-heading">
+    <div class="section-header">
+      <div class="section-number">3</div>
+      <div>
+        <div class="section-title" id="generate-heading">Generate Timetable</div>
+        <div class="section-sub">Run the constraint-satisfaction scheduler</div>
+      </div>
+    </div>
+
+    <div class="generate-area">
+      <div class="generate-info">
+        <h3>Ready to Schedule</h3>
+        <p>The algorithm will respect all hard constraints and minimize soft constraint violations.</p>
+      </div>
+      <button class="btn btn-success btn-lg" id="generate-btn">
+        ⚡ Generate Timetable
+      </button>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span>Progress</span>
+        <span>Ready</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── RESULTS ── -->
+  <section class="section" id="results-section" aria-labelledby="results-heading">
+    <div class="section-header">
+      <div class="section-number">4</div>
+      <div>
+        <div class="section-title" id="results-heading">Generated Timetable</div>
+        <div class="section-sub">View, analyze and export your schedule</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-card info">
+        <div class="stat-value" id="stat-assigned">—</div>
+        <div class="stat-label">Sessions Scheduled</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-value" id="stat-possible">—</div>
+        <div class="stat-label">Sessions Required</div>
+      </div>
+      <div class="stat-card good" id="stat-conflicts-card">
+        <div class="stat-value" id="stat-conflicts">—</div>
+        <div class="stat-label">Conflicts</div>
+      </div>
+      <div class="stat-card good" id="stat-efficiency-card">
+        <div class="stat-value" id="stat-efficiency">—</div>
+        <div class="stat-label">Schedule Efficiency</div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend" id="subject-legend"></div>
+
+    <!-- Timetable Card -->
+    <div class="card" style="margin-bottom:24px;">
+
+      <!-- Tab Bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
+        <div class="tab-bar" role="tablist" aria-label="View timetable by">
+          <button class="tab-btn active" data-tab="class" role="tab" aria-selected="true" id="tab-class">By Class</button>
+          <button class="tab-btn" data-tab="faculty" role="tab" aria-selected="false" id="tab-faculty">By Faculty</button>
+          <button class="tab-btn" data-tab="room" role="tab" aria-selected="false" id="tab-room">By Room</button>
+        </div>
+      </div>
+
+      <!-- Selectors -->
+      <div class="selector-row" id="class-selector-row">
+        <label for="class-selector">Select Class:</label>
+        <select id="class-selector" aria-label="Select class to view timetable"></select>
+      </div>
+      <div class="selector-row" id="faculty-selector-row" style="display:none;">
+        <label for="faculty-selector">Select Faculty:</label>
+        <select id="faculty-selector" aria-label="Select faculty to view timetable"></select>
+      </div>
+      <div class="selector-row" id="room-selector-row" style="display:none;">
+        <label for="room-selector">Select Room:</label>
+        <select id="room-selector" aria-label="Select room to view timetable"></select>
+      </div>
+
+      <!-- Grid Output -->
+      <div id="timetable-output" role="tabpanel">
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <p>Timetable will appear here after generation.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conflicts -->
+    <div class="card" style="margin-bottom:24px;">
+      <p class="preview-label" style="margin-bottom:16px;">⚠️ Conflict Report</p>
+      <div id="conflicts-list"></div>
+    </div>
+
+    <!-- Export -->
+    <div class="export-bar">
+      <p style="font-size:0.85rem;color:var(--text-secondary);">Export or share your generated schedule</p>
+      <div class="export-btns">
+        <button class="btn btn-secondary" id="export-csv-btn">📥 Export CSV</button>
+        <button class="btn btn-outline" id="print-btn">🖨️ Print</button>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /#app -->
+
+<script src="app.js"></script>
+
+</body>
+</html>

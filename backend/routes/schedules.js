@@ -142,6 +142,24 @@ function shuffle(arr) {
   return arr;
 }
 
+// Strip null slots from byClass before saving to MongoDB
+// Null values in nested Mongoose Maps cause save failures
+function stripNullSlots(byClass) {
+  const clean = {};
+  for (const [cls, days] of Object.entries(byClass)) {
+    clean[cls] = {};
+    for (const [day, slots] of Object.entries(days)) {
+      clean[cls][day] = {};
+      for (const [slot, entry] of Object.entries(slots)) {
+        if (entry !== null && entry !== undefined) {
+          clean[cls][day][slot] = entry;
+        }
+      }
+    }
+  }
+  return clean;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/schedules/generate — Generate and save a schedule
@@ -170,12 +188,15 @@ router.post('/generate', async (req, res) => {
     }
     const efficiency = totalPossible > 0 ? Math.round((totalAssigned / totalPossible) * 100) : 0;
 
+    // Strip null slots before saving — Mongoose nested Maps reject null values
+    const cleanByClass = stripNullSlots(result.byClass);
+
     const schedule = await Schedule.create({
       name,
       datasetId: datasetId || null,
       algorithmMode: algorithmMode || 'balanced',
       lecturesPerWeek,
-      byClass: result.byClass,
+      byClass: cleanByClass,
       byFaculty: result.byFaculty,
       byRoom: result.byRoom,
       conflicts: result.conflicts,

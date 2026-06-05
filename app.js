@@ -554,7 +554,6 @@ async function generateTimetable() {
     const el = document.getElementById(id);
     if (el) State.lecturesPerWeek[s] = parseInt(el.value) || 3;
   }
-  State.algorithmMode = document.getElementById('algo-mode').value;
 
   const btn = document.getElementById('generate-btn');
   btn.disabled = true;
@@ -579,8 +578,13 @@ async function generateTimetable() {
   await new Promise(r => setTimeout(r, 1100));
   clearInterval(progressInterval);
 
-  // ── Run scheduler locally ──
-  State.schedule = Scheduler.generate(State.parsed, State.lecturesPerWeek, State.algorithmMode);
+  // ── Run all 3 algorithms, pick the one with fewest conflicts ──
+  const results = ['fast', 'balanced', 'thorough'].map(mode =>
+    Scheduler.generate(State.parsed, State.lecturesPerWeek, mode)
+  );
+  State.schedule = results.reduce((best, r) =>
+    r.conflicts.length < best.conflicts.length ? r : best
+  );
 
   // ── Save to MongoDB via backend API ──
   setProgress(90, 'Saving to database...');

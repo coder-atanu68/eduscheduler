@@ -201,8 +201,15 @@ const Render = {
 
   timetableByClass(className) {
     const classSchedule = State.schedule.byClass[className];
+    const g1Schedule = State.schedule.byClass[`${className} [G1]`];
+    const g2Schedule = State.schedule.byClass[`${className} [G2]`];
     const data = State.parsed;
     if (!classSchedule) return '<div class="empty-state"><div class="icon">📭</div><p>No data</p></div>';
+
+    // If lab groups exist, render a merged view with Group 1/2 sub-rows
+    if (g1Schedule || g2Schedule) {
+      return this._renderGroupedGrid(classSchedule, g1Schedule, g2Schedule, data);
+    }
     return this._renderGrid(classSchedule, data);
   },
 
@@ -263,12 +270,76 @@ const Render = {
     return html;
   },
 
+  _renderGroupedGrid(mainSched, g1Sched, g2Sched, data) {
+    const days = Object.keys(data.timeslots);
+    const allUniqueSlots = [...new Set(days.flatMap(d => data.timeslots[d]))];
+    const colTemplate = `120px 44px repeat(${days.length}, 1fr)`;
+
+    let html = `<div class="timetable-container"><div class="timetable-grid">`;
+
+    // Header
+    html += `<div class="timetable-header-row" style="grid-template-columns:${colTemplate}">`;
+    html += `<div class="cell-time">TIME</div>`;
+    html += `<div class="cell-time" style="font-size:0.55rem;letter-spacing:0.05em;">GRP</div>`;
+    for (const day of days) html += `<div class="cell-day-header">${day}</div>`;
+    html += `</div>`;
+
+    for (const slot of allUniqueSlots) {
+      // ── Group 1 row ──
+      html += `<div class="timetable-row" style="grid-template-columns:${colTemplate}">`;
+      html += `<div class="cell-time" style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;">${slot}</div>`;
+      html += `<div class="cell" style="display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;opacity:0.5;">1</div>`;
+
+      for (const day of days) {
+        const mainEntry = mainSched[day]?.[slot];
+        const g1Entry = g1Sched?.[day]?.[slot];
+        const entry = mainEntry || g1Entry;
+        html += `<div class="cell">`;
+        if (entry) {
+          const c = SubjectColors.get(entry.subject);
+          html += `<div class="lesson-card" style="background:${c.bg};border-color:${c.border};color:${c.text}" title="${entry.subject} — ${entry.faculty} — ${entry.room}">
+            <div class="lesson-subject">${entry.subject}</div>
+            <div class="lesson-faculty">${entry.faculty}</div>
+            <div class="lesson-room">📍 ${entry.room}</div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+
+      // ── Group 2 row ──
+      html += `<div class="timetable-row" style="grid-template-columns:${colTemplate};margin-bottom:2px;">`;
+      html += `<div class="cell-time" style="font-size:0;padding:0;min-height:0;border-top:none;"></div>`;
+      html += `<div class="cell" style="display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;opacity:0.5;">2</div>`;
+
+      for (const day of days) {
+        const mainEntry = mainSched[day]?.[slot];
+        const g2Entry = g2Sched?.[day]?.[slot];
+        const entry = mainEntry || g2Entry;
+        html += `<div class="cell">`;
+        if (entry) {
+          const c = SubjectColors.get(entry.subject);
+          html += `<div class="lesson-card" style="background:${c.bg};border-color:${c.border};color:${c.text}" title="${entry.subject} — ${entry.faculty} — ${entry.room}">
+            <div class="lesson-subject">${entry.subject}</div>
+            <div class="lesson-faculty">${entry.faculty}</div>
+            <div class="lesson-room">📍 ${entry.room}</div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div></div>`;
+    return html;
+  },
+
   stats(schedule, data) {
     let totalAssigned = 0;
     let totalPossible = 0;
-    const classes = data.classes.map(c => c.name);
 
-    for (const cls of classes) {
+    // Count ALL entries in byClass — including lab groups like "CS Sem 4-A [G1]"
+    for (const cls of Object.keys(schedule.byClass)) {
       const days = Object.keys(schedule.byClass[cls] || {});
       for (const day of days) {
         for (const slot of Object.values(schedule.byClass[cls][day])) {
@@ -277,8 +348,12 @@ const Render = {
       }
     }
 
+    // Calculate total possible — lab subjects (ending with "Lab") are doubled
+    // because each class splits into 2 groups
+    const numClasses = data.classes.length;
     for (const [subj, count] of Object.entries(State.lecturesPerWeek)) {
-      totalPossible += count * classes.length;
+      const isLab = subj.trim().endsWith('Lab');
+      totalPossible += count * numClasses * (isLab ? 2 : 1);
     }
 
     const conflictCount = schedule.conflicts.length;
@@ -449,7 +524,7 @@ async function generateTimetable() {
   // Render legend
   Render.legend(State.parsed.subjects);
 
-  // Populate selectors
+  // Populate selectors — only original class names (lab groups are merged in the timetable view)
   Render.selectorOptions(State.parsed.classes.map(c => c.name), 'class-selector');
   Render.selectorOptions(State.parsed.faculty.map(f => f.name), 'faculty-selector');
   Render.selectorOptions(State.parsed.classrooms.map(r => r.name), 'room-selector');
@@ -468,6 +543,7 @@ async function generateTimetable() {
   btn.disabled = false;
   btn.innerHTML = `🔄 Regenerate`;
 
+  const conflictCount = State.schedule.conflicts.length;
   toast(conflictCount === 0
     ? '✅ Timetable generated — Graph Coloring (Welsh-Powell)'
     : `⚠️ Generated with ${conflictCount} conflict(s)`, conflictCount === 0 ? 'success' : 'warn');
@@ -582,6 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const reader = new FileReader();
     reader.onload = ev => handleFileLoad(ev.target.result, file.name);
     reader.readAsText(file);
+    fileInput.value = ''; // Reset so the same/different file can be re-uploaded
   });
 
   // Drag & drop

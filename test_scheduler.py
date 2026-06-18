@@ -1,4 +1,4 @@
-"""Quick test — parse sample_data.txt and run the NEW Graph Coloring (Welsh-Powell) scheduler.
+"""Quick test — parse sample_data.txt and run the Graph Coloring (Welsh-Powell) scheduler.
 Also verify determinism: run it twice and check results are identical."""
 import sys
 import os
@@ -8,7 +8,7 @@ import parser as data_parser
 import scheduler
 
 # Read sample data
-sample_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sample_data.txt')
+sample_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sample_data.txt')
 with open(sample_path, 'r', encoding='utf-8') as f:
     raw_text = f.read()
 
@@ -32,17 +32,21 @@ print(f"Lectures/week: {lectures_per_week}")
 print("\n--- Running Graph Coloring (Welsh-Powell) (Run 1) ---")
 result1 = scheduler.generate(parsed, lectures_per_week)
 
-# Stats
+# Stats — count ALL entries in byClass (including lab groups)
 total_assigned = 0
-total_possible = 0
-class_names = [c['name'] for c in parsed['classes']]
-for cls in class_names:
-    for day_slots in (result1['byClass'].get(cls) or {}).values():
+for cls_name, days in result1['byClass'].items():
+    for day_slots in days.values():
         for entry in day_slots.values():
             if entry is not None:
                 total_assigned += 1
-for count in lectures_per_week.values():
-    total_possible += count * len(class_names)
+
+# Total possible = sum of lectures_per_week * num_classes (for regular)
+#                + sum of lectures_per_week * num_classes * 2 (for lab subjects, since each class splits into 2 groups)
+total_possible = 0
+for subject, count in lectures_per_week.items():
+    is_lab = subject.strip().endswith('Lab')
+    multiplier = 2 if is_lab else 1
+    total_possible += int(count) * len(parsed['classes']) * multiplier
 
 efficiency = round((total_assigned / total_possible) * 100) if total_possible > 0 else 0
 
@@ -58,20 +62,24 @@ if result1['conflicts']:
 else:
     print("\nNo conflicts! All lectures scheduled successfully.")
 
+# Show all class names (including lab groups)
+all_class_names = sorted(result1['byClass'].keys())
+print(f"\nSchedule keys ({len(all_class_names)}): {all_class_names}")
+
 # Run again — verify determinism
 print("\n--- Running Graph Coloring (Welsh-Powell) (Run 2 — determinism check) ---")
 result2 = scheduler.generate(parsed, lectures_per_week)
 
 # Compare
 identical = True
-for cls in class_names:
-    for day in result1['byClass'][cls]:
-        for slot in result1['byClass'][cls][day]:
-            e1 = result1['byClass'][cls][day][slot]
-            e2 = result2['byClass'][cls][day][slot]
+for cls_name in all_class_names:
+    for day in result1['byClass'][cls_name]:
+        for slot in result1['byClass'][cls_name][day]:
+            e1 = result1['byClass'][cls_name][day][slot]
+            e2 = result2['byClass'][cls_name][day].get(slot)
             if e1 != e2:
                 identical = False
-                print(f"  MISMATCH: {cls} {day} {slot}: {e1} vs {e2}")
+                print(f"  MISMATCH: {cls_name} {day} {slot}: {e1} vs {e2}")
 
 if identical:
     print("DETERMINISTIC: Both runs produced IDENTICAL results!")
@@ -79,7 +87,7 @@ else:
     print("WARNING: Results differ between runs!")
 
 # Print one class timetable
-first_class = class_names[0]
+first_class = all_class_names[0]
 print(f"\n--- Timetable for {first_class} ---")
 for day in parsed['timeslots']:
     for slot in parsed['timeslots'][day]:

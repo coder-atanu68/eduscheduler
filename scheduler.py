@@ -4,25 +4,33 @@ DAA Mini Project | Algorithm: Graph Coloring Heuristic
 
 This algorithm models the timetable as a Graph Coloring problem:
   1. VERTICES (Nodes): Every lecture to be scheduled is a node. Faculty is pre-assigned
-     to balance loads.
+     to balance loads. Lab subjects automatically split each class into two groups.
   2. EDGES: An edge connects two nodes if they cannot happen at the same time
-     (i.e., they share the same Class or the same Faculty).
+     (i.e., they share the same Original Class or the same Faculty).
+     Exception: Two different lab groups of the same class have NO class-edge,
+     allowing them to be scheduled simultaneously in separate rooms.
   3. DEGREE SORTING: Nodes are sorted by their degree (number of edges) in descending
      order. This is the core of the Welsh-Powell algorithm (most constrained first).
   4. COLORING: Time slots act as "Colors". We color each node avoiding edge conflicts,
      while enforcing a maximum capacity per color (number of physical classrooms).
   5. ROOM ASSIGNMENT: After the graph is validly colored, nodes sharing the same color
-     are assigned to specific physical rooms based on capacity.
+     are assigned to specific physical rooms. Rooms are validated against the effective
+     class strength (full class or half-class for lab groups).
 """
 
+import math
+
 class Node:
-    def __init__(self, node_id, cls_name, subject, faculty):
+    def __init__(self, node_id, cls_name, subject, faculty, original_class=None, group=None, strength=0):
         self.id = node_id
-        self.cls_name = cls_name
+        self.cls_name = cls_name          # Display name (e.g. "CS Sem 4-A [G1]" or "CS Sem 4-A")
         self.subject = subject
         self.faculty = faculty
-        self.adj = []       # List of adjacent Nodes
-        self.color = None   # Tuple (day, slot)
+        self.original_class = original_class or cls_name  # The real class (before group split)
+        self.group = group                # None for regular, 1 or 2 for lab groups
+        self.strength = strength          # Effective student count for room capacity check
+        self.adj = []                     # List of adjacent Nodes
+        self.color = None                 # Tuple (day, slot)
 
 def generate(data, lectures_per_week):
     # ── 1. Preparation & Faculty Pre-assignment ────────────────────────────
@@ -39,35 +47,86 @@ def generate(data, lectures_per_week):
     conflicts = []
 
     # Create a node for every required lecture
+    # Lab subjects (ending with "Lab") split each class into two groups
     for cls in data['classes']:
         for subject in data['subjects']:
             count = int(lectures_per_week.get(subject, 3))
-            for _ in range(count):
-                capable = subject_faculty.get(subject, [])
-                if not capable:
-                    conflicts.append({
-                        'type': 'no-faculty',
-                        'class': cls['name'],
-                        'subject': subject,
-                        'message': f"No faculty available to teach {subject}"
-                    })
-                    break # Skip creating nodes if no faculty
-                
-                # Pre-assign the faculty with the lowest current load
-                capable.sort(key=lambda f: (faculty_assignment_count[f['name']], f['name']))
-                chosen_faculty = capable[0]['name']
-                faculty_assignment_count[chosen_faculty] += 1
-                
-                nodes.append(Node(node_id, cls['name'], subject, chosen_faculty))
-                node_id += 1
+            is_lab = subject.strip().endswith('Lab')
+
+            if is_lab:
+                # ── Lab Subject: Split class into Group 1 & Group 2 ────────
+                group_strength = math.ceil(cls['strength'] / 2)
+
+                for group_num in [1, 2]:
+                    group_name = f"{cls['name']} [G{group_num}]"
+                    for _ in range(count):
+                        capable = subject_faculty.get(subject, [])
+                        if not capable:
+                            conflicts.append({
+                                'type': 'no-faculty',
+                                'class': group_name,
+                                'subject': subject,
+                                'message': f"No faculty available to teach {subject}"
+                            })
+                            break
+                        
+                        # Pre-assign the faculty with the lowest current load
+                        capable.sort(key=lambda f: (faculty_assignment_count[f['name']], f['name']))
+                        chosen_faculty = capable[0]['name']
+                        faculty_assignment_count[chosen_faculty] += 1
+                        
+                        nodes.append(Node(
+                            node_id, group_name, subject, chosen_faculty,
+                            original_class=cls['name'], group=group_num,
+                            strength=group_strength
+                        ))
+                        node_id += 1
+            else:
+                # ── Regular Subject: Full class as one unit ────────────────
+                for _ in range(count):
+                    capable = subject_faculty.get(subject, [])
+                    if not capable:
+                        conflicts.append({
+                            'type': 'no-faculty',
+                            'class': cls['name'],
+                            'subject': subject,
+                            'message': f"No faculty available to teach {subject}"
+                        })
+                        break
+                    
+                    # Pre-assign the faculty with the lowest current load
+                    capable.sort(key=lambda f: (faculty_assignment_count[f['name']], f['name']))
+                    chosen_faculty = capable[0]['name']
+                    faculty_assignment_count[chosen_faculty] += 1
+                    
+                    nodes.append(Node(
+                        node_id, cls['name'], subject, chosen_faculty,
+                        original_class=cls['name'], group=None,
+                        strength=cls['strength']
+                    ))
+                    node_id += 1
+
+    # Collect all unique class/group names that were actually created
+    all_class_names = sorted(set(n.cls_name for n in nodes))
 
     # ── 2. Graph Construction (Add Edges) ──────────────────────────────────
     for i in range(len(nodes)):
         for j in range(i + 1, len(nodes)):
             n1 = nodes[i]
             n2 = nodes[j]
-            # Edge condition: Same Class OR Same Faculty
-            if n1.cls_name == n2.cls_name or n1.faculty == n2.faculty:
+
+            # Check class conflict (same original class = students overlap)
+            same_class_conflict = False
+            if n1.original_class == n2.original_class:
+                # Exception: Two DIFFERENT lab groups of the same class CAN coexist
+                # (Group 1 students ≠ Group 2 students, so no overlap)
+                if n1.group is not None and n2.group is not None and n1.group != n2.group:
+                    same_class_conflict = False
+                else:
+                    same_class_conflict = True
+
+            # Edge condition: Same Class (with lab exception) OR Same Faculty
+            if same_class_conflict or n1.faculty == n2.faculty:
                 n1.adj.append(n2)
                 n2.adj.append(n1)
 
@@ -85,9 +144,9 @@ def generate(data, lectures_per_week):
     MAX_ROOMS = len(data['classrooms'])
     color_usage = {color: 0 for color in all_colors}
 
-    # Tracking for soft constraints
-    class_subject_day_count = {c['name']: {subj: {day: 0 for day in data['timeslots']} for subj in data['subjects']} for c in data['classes']}
-    class_schedule = {c['name']: {day: {slot: None for slot in data['timeslots'][day]} for day in data['timeslots']} for c in data['classes']}
+    # Tracking for soft constraints (uses actual class names including lab groups)
+    class_subject_day_count = {cn: {subj: {day: 0 for day in data['timeslots']} for subj in data['subjects']} for cn in all_class_names}
+    class_schedule = {cn: {day: {slot: None for slot in data['timeslots'][day]} for day in data['timeslots']} for cn in all_class_names}
 
     for node in nodes:
         best_color = None
@@ -145,9 +204,10 @@ def generate(data, lectures_per_week):
                 'message': f"Could not schedule 1 lecture(s) of {node.subject} for {node.cls_name} — graph coloring failed (no valid slot or room limit reached)"
             })
 
-    # ── 5. Room Assignment ─────────────────────────────────────────────────
-    # Now that the graph is colored, map colors to physical rooms
-    schedule = {c['name']: {day: {slot: None for slot in data['timeslots'][day]} for day in data['timeslots']} for c in data['classes']}
+    # ── 5. Room Assignment (with Capacity Validation) ──────────────────────
+    # Now that the graph is colored, map colors to physical rooms.
+    # Each node's effective strength is checked against the room's capacity.
+    schedule = {cn: {day: {slot: None for slot in data['timeslots'][day]} for day in data['timeslots']} for cn in all_class_names}
     
     # Group nodes by color
     nodes_by_color = {color: [] for color in all_colors}
@@ -155,28 +215,41 @@ def generate(data, lectures_per_week):
         if node.color:
             nodes_by_color[node.color].append(node)
 
-    class_lookup = {c['name']: c for c in data['classes']}
-
     for color, colored_nodes in nodes_by_color.items():
         if not colored_nodes:
             continue
             
         day, slot = color
         
-        # Sort nodes by class strength descending (give biggest classes first pick of rooms)
-        colored_nodes.sort(key=lambda n: -class_lookup[n.cls_name]['strength'])
+        # Sort nodes by strength descending (biggest classes get first pick of rooms)
+        colored_nodes.sort(key=lambda n: (-n.strength, n.cls_name))
         
-        # Available rooms for this color, sorted by capacity descending
-        available_rooms = sorted(data['classrooms'], key=lambda r: (-r['capacity'], r['name']))
+        # Available rooms for this color, sorted by capacity ASCENDING (Best Fit approach)
+        available_rooms = sorted(data['classrooms'], key=lambda r: (r['capacity'], r['name']))
         
         for node in colored_nodes:
-            room = available_rooms.pop(0) # We proved len(colored_nodes) <= len(classrooms) earlier
+            # Find the first available room with sufficient capacity
+            assigned = False
+            for i, room in enumerate(available_rooms):
+                if room['capacity'] >= node.strength:
+                    available_rooms.pop(i)
+                    schedule[node.cls_name][day][slot] = {
+                        'subject': node.subject,
+                        'faculty': node.faculty,
+                        'room': room['name']
+                    }
+                    assigned = True
+                    break
             
-            schedule[node.cls_name][day][slot] = {
-                'subject': node.subject,
-                'faculty': node.faculty,
-                'room': room['name']
-            }
+            if not assigned:
+                # No room large enough — report as a conflict
+                conflicts.append({
+                    'type': 'no-room',
+                    'class': node.cls_name,
+                    'subject': node.subject,
+                    'count': 1,
+                    'message': f"No room with sufficient capacity ({node.strength} students) for {node.subject} in {node.cls_name} at {day} {slot}"
+                })
 
     # ── 6. Build reverse lookups ───────────────────────────────────────────
     by_faculty = {}

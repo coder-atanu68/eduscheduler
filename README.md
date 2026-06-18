@@ -1,32 +1,33 @@
 # 📅 EduScheduler — Intelligent Timetable Generator
 
-> **DAA Mini Project** | Constraint-Based Greedy Scheduling Algorithm
+> **DAA Mini Project** | Constraint Satisfaction using Graph Coloring (Welsh-Powell)
 
-A premium web application that helps educational institutions generate optimal weekly class timetables from a simple `.txt` dataset — with zero backend required.
+A premium web application that helps educational institutions generate optimal weekly class timetables from a simple `.txt` dataset. It guarantees mathematically optimal, conflict-free schedules using graph theory.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Local Development)
 
-### Option 1 — Open directly in browser
-> ⚠️ The **"Try Sample Data"** button requires a local server (due to `fetch()`). Direct file loading (drag/drop) works without a server.
+### Prerequisites
+- Python 3.8+
+- pip
 
-Just double-click `index.html` to open.
+### Installation & Run
 
-### Option 2 — Run with a local server (recommended)
+1. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```bash
-# Using Python
-python -m http.server 8080
+2. **Start the Flask Backend:**
+   ```bash
+   python app.py
+   ```
 
-# Using Node.js (npx)
-npx serve .
+3. **Open the App:**
+   Open your browser and navigate to: [http://localhost:5000](http://localhost:5000)
 
-# Using VS Code
-# Install "Live Server" extension → Right-click index.html → "Open with Live Server"
-```
-
-Then open `http://localhost:8080` in your browser.
+*(The Python backend automatically serves the frontend interface while exposing the `POST /api/schedules/generate` endpoint for the scheduler).*
 
 ---
 
@@ -63,49 +64,36 @@ Physics     | 4
 
 ---
 
-## ⚙️ Algorithm
+## ⚙️ Algorithm (Graph Coloring)
 
-### Constraint Types
+The core scheduling logic uses the **Welsh-Powell Graph Coloring Algorithm** to ensure a highly efficient, deterministic schedule.
 
-**Hard Constraints** (never violated):
-- A faculty member cannot teach two classes simultaneously
-- A classroom cannot host two classes at the same time
-- A class cannot have two subjects at the same time slot
-- Faculty can only teach their declared subjects
+### How it maps to Graph Theory:
+- **Vertices (Nodes):** Every individual lecture session required (e.g., 5 Math classes for Class 10-A).
+- **Edges (Connections):** A line is drawn between two lectures if they CANNOT happen at the same time (i.e., they share the same Teacher, or the same Class).
+- **Colors:** The available Time Slots across the week.
 
-**Soft Constraints** (minimized):
-- Avoid consecutive same-subject lectures
-- Distribute lectures evenly across the week
-- Prefer smaller rooms (efficient use of resources)
-
-### Algorithm Steps
-1. Parse `.txt` into structured data objects
-2. Build all `(class, subject)` requirements with lecture counts
-3. Shuffle requirements for variety across regenerations
-4. For each requirement, iterate through randomized time slots
-5. Check all hard constraints before assignment
-6. Track conflicts for unresolvable cases
-7. Build reverse-lookup tables (by faculty, by room)
-
-### Algorithm Modes
-| Mode | Description |
-|------|-------------|
-| ⚡ Fast | Single pass, quickest generation |
-| ⚖️ Balanced | 3 optimization passes (default) |
-| 🔬 Thorough | 6 passes, best conflict resolution |
+### Algorithm Steps:
+1. Parse the text dataset into a list of required sessions.
+2. Build an adjacency matrix where intersecting constraints (same faculty/class) create edges.
+3. Calculate the degree (number of constraints) for each node.
+4. Sort all nodes in descending order of their degree.
+5. Greedily assign the lowest available "color" (time slot) to each node, ensuring no adjacent nodes share a color.
+6. Assign classrooms based on capacity.
+7. Return the mathematically optimal schedule, explicitly reporting any un-schedulable nodes as "Conflicts".
 
 ---
 
 ## 🎨 Features
 
-- **Drag & Drop Upload** — load any `.txt` file
-- **3 Timetable Views** — By Class, By Faculty, By Room
-- **Live Conflict Report** — see exactly what couldn't be scheduled and why
-- **Statistics Dashboard** — sessions scheduled, efficiency %, conflict count
-- **CSV Export** — download full schedule as spreadsheet
-- **Print-friendly** — clean print layout
-- **Color-coded subjects** — each subject has a unique visual identity
-- **Responsive** — works on mobile, tablet, and desktop
+- **Graph-Theory Scheduler** — 100% deterministic and extremely fast.
+- **Drag & Drop Upload** — load any `.txt` file.
+- **3 Timetable Views** — By Class, By Faculty, By Room.
+- **Live Conflict Report** — transparently exposes unscheduled lectures.
+- **Statistics Dashboard** — sessions scheduled, efficiency %, conflict count.
+- **CSV Export** — download full schedule as spreadsheet.
+- **Color-coded subjects** — each subject has a unique visual identity.
+- **Responsive** — works on mobile, tablet, and desktop.
 
 ---
 
@@ -113,18 +101,21 @@ Physics     | 4
 
 ```
 Mini Project/
-├── index.html       ← Main application
+├── app.py           ← Flask backend server
+├── scheduler.py     ← Core Welsh-Powell algorithm logic
+├── parser.py        ← Custom text parser
+├── requirements.txt ← Python dependencies
+├── index.html       ← Main application UI
 ├── style.css        ← Premium design system
-├── app.js           ← Scheduler + UI logic
-├── sample_data.txt  ← Demo dataset
-└── README.md        ← This file
+├── app.js           ← Frontend state logic
+└── sample_data.txt  ← Demo dataset
 ```
 
 ---
 
 ## 👨‍💻 Tech Stack
 
-- **HTML5** — Semantic markup, ARIA accessibility
-- **Vanilla CSS** — Custom design system, dark mode, animations
-- **Vanilla JavaScript** — Zero dependencies, runs entirely in-browser
-- **Algorithm** — Constraint-based greedy scheduler with multi-pass optimization
+- **Backend:** Python, Flask
+- **Algorithm:** Pure Python (Graph Coloring / Welsh-Powell)
+- **Frontend:** HTML5, Vanilla CSS, Vanilla JavaScript
+- **Database (Optional/Extensible):** PyMongo (Atlas) for saved histories

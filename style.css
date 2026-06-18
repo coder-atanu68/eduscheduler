@@ -556,11 +556,4 @@ body {
 .history-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.72rem; color: var(--text-muted); }
 .history-meta span { background: rgba(108,99,255,0.08); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 2px 8px; }
 
-/* Print Styles */
 
-@media print {
-  .bg-mesh, .site-header, .hero, .section:not(#results-section) { display: none; }
-  body { background: white; color: black; }
-  .card { box-shadow: none; border: 1px solid #ddd; }
-  .lesson-card { color: black; }
-}

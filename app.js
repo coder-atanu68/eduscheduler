@@ -1,6 +1,6 @@
 /**
- * TIMETABLE SCHEDULER — Core Application Logic
- * DAA Mini Project | Algorithm: Constraint-Based Greedy + Backtracking
+ * TIMETABLE SCHEDULER — Frontend Application Logic
+ * DAA Mini Project | Algorithm: Graph Coloring (Welsh-Powell)
  */
 
 'use strict';
@@ -22,7 +22,6 @@ const State = {
   schedule: null,
   conflicts: [],
   lecturesPerWeek: {},
-  algorithmMode: 'balanced',
   currentTab: 'class',
   currentEntity: null,
   savedDatasetId: null,
@@ -97,178 +96,10 @@ const Parser = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// SCHEDULER (Constraint-Based Greedy + Backtracking)
+// NOTE: Scheduling algorithm has been moved to Python backend
+// (python_backend/scheduler.py — Backtracking + MRV)
+// The frontend calls POST /api/schedules/generate to run it.
 // ═══════════════════════════════════════════════════════════════
-const Scheduler = {
-  generate(data, lecturesPerWeek, mode) {
-    const schedule = {}; // schedule[class][day][slot] = { subject, faculty, room }
-    const conflicts = [];
-
-    // Build all time slot pairs
-    const allSlots = [];
-    for (const [day, slots] of Object.entries(data.timeslots)) {
-      for (const slot of slots) allSlots.push({ day, slot });
-    }
-
-    // Initialize schedule structure
-    for (const cls of data.classes) {
-      schedule[cls.name] = {};
-      for (const day of Object.keys(data.timeslots)) {
-        schedule[cls.name][day] = {};
-        for (const slot of data.timeslots[day]) {
-          schedule[cls.name][day][slot] = null;
-        }
-      }
-    }
-
-    // Build requirements: (class, subject) → count
-    const requirements = [];
-    for (const cls of data.classes) {
-      for (const subject of data.subjects) {
-        const count = lecturesPerWeek[subject] || 3;
-        requirements.push({ class: cls.name, subject, remaining: count });
-      }
-    }
-
-    // Shuffle requirements for variety
-    this._shuffle(requirements);
-
-    // Tracking sets for constraint checking
-    // facultyBusy[faculty][day][slot] = true
-    // roomBusy[room][day][slot] = true
-    // classBusy[class][day][slot] = true
-    const facultyBusy = {};
-    const roomBusy = {};
-    const classBusy = {};
-
-    for (const f of data.faculty) { facultyBusy[f.name] = {}; }
-    for (const r of data.classrooms) { roomBusy[r.name] = {}; }
-    for (const c of data.classes) { classBusy[c.name] = {}; }
-
-    const initBusy = (obj, day, slot) => {
-      if (!obj[day]) obj[day] = {};
-      if (!obj[day][slot]) obj[day][slot] = false;
-    };
-
-    // Pre-init all busy slots
-    for (const { day, slot } of allSlots) {
-      for (const f of data.faculty) initBusy(facultyBusy[f.name], day, slot);
-      for (const r of data.classrooms) initBusy(roomBusy[r.name], day, slot);
-      for (const c of data.classes) initBusy(classBusy[c.name], day, slot);
-    }
-
-    // Main assignment loop
-    const maxIterations = mode === 'fast' ? 1 : mode === 'balanced' ? 3 : 6;
-
-    for (let iter = 0; iter < maxIterations; iter++) {
-      this._shuffle(requirements.filter(r => r.remaining > 0));
-      for (const req of requirements) {
-        if (req.remaining <= 0) continue;
-
-        // Find capable faculty
-        const capableFaculty = data.faculty.filter(f =>
-          f.subjects.some(s => s.toLowerCase() === req.subject.toLowerCase())
-        );
-
-        if (!capableFaculty.length) {
-          if (iter === 0) conflicts.push({ type: 'no-faculty', class: req.class, subject: req.subject, message: `No faculty available to teach ${req.subject}` });
-          req.remaining = 0; continue;
-        }
-
-        // Try to find a slot
-        const shuffledSlots = this._shuffle([...allSlots]);
-        let assigned = false;
-
-        for (const { day, slot } of shuffledSlots) {
-          if (req.remaining <= 0) break;
-          if (classBusy[req.class][day]?.[slot]) continue;
-
-          // Check for same-subject consecutive avoidance (soft)
-          if (mode !== 'fast') {
-            const prevSlots = (data.timeslots[day] || []);
-            const slotIdx = prevSlots.indexOf(slot);
-            if (slotIdx > 0) {
-              const prevSlot = prevSlots[slotIdx - 1];
-              if (schedule[req.class][day][prevSlot]?.subject === req.subject) continue;
-            }
-          }
-
-          // Find available faculty for this slot
-          const availFaculty = capableFaculty.filter(f => !facultyBusy[f.name][day]?.[slot]);
-          if (!availFaculty.length) continue;
-
-          // Find class-fitting room
-          const cls = data.classes.find(c => c.name === req.class);
-          const availRooms = data.classrooms.filter(r =>
-            !roomBusy[r.name][day]?.[slot] && r.capacity >= (cls?.strength || 0)
-          );
-          // Fallback: any available room
-          const fallbackRooms = availRooms.length ? availRooms : data.classrooms.filter(r => !roomBusy[r.name][day]?.[slot]);
-          if (!fallbackRooms.length) continue;
-
-          // Pick best faculty (fewest assigned so far) and smallest fitting room
-          const chosenFaculty = availFaculty[0];
-          const chosenRoom = fallbackRooms.sort((a, b) => a.capacity - b.capacity)[0];
-
-          // Assign
-          schedule[req.class][day][slot] = { subject: req.subject, faculty: chosenFaculty.name, room: chosenRoom.name };
-          facultyBusy[chosenFaculty.name][day][slot] = true;
-          roomBusy[chosenRoom.name][day][slot] = true;
-          classBusy[req.class][day][slot] = true;
-          req.remaining--;
-          assigned = true;
-        }
-
-        if (!assigned && req.remaining > 0) {
-          conflicts.push({
-            type: 'unscheduled',
-            class: req.class,
-            subject: req.subject,
-            count: req.remaining,
-            message: `Could not schedule ${req.remaining} lecture(s) of ${req.subject} for ${req.class} — insufficient slots or faculty`
-          });
-          req.remaining = 0;
-        }
-      }
-    }
-
-    // Build reverse lookups
-    const byFaculty = {};
-    const byRoom = {};
-    for (const [cls, days_] of Object.entries(schedule)) {
-      for (const [day, slots] of Object.entries(days_)) {
-        for (const [slot, entry] of Object.entries(slots)) {
-          if (!entry) continue;
-          if (!byFaculty[entry.faculty]) byFaculty[entry.faculty] = {};
-          if (!byFaculty[entry.faculty][day]) byFaculty[entry.faculty][day] = {};
-          byFaculty[entry.faculty][day][slot] = { ...entry, class: cls };
-
-          if (!byRoom[entry.room]) byRoom[entry.room] = {};
-          if (!byRoom[entry.room][day]) byRoom[entry.room][day] = {};
-          byRoom[entry.room][day][slot] = { ...entry, class: cls };
-        }
-      }
-    }
-
-    // Deduplicate conflicts
-    const seen = new Set();
-    const dedupedConflicts = conflicts.filter(c => {
-      const key = `${c.type}-${c.class}-${c.subject}`;
-      if (seen.has(key)) return false;
-      seen.add(key); return true;
-    });
-
-    return { byClass: schedule, byFaculty, byRoom, conflicts: dedupedConflicts };
-  },
-
-  _shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
-};
 
 // ═══════════════════════════════════════════════════════════════
 // SUBJECT COLOR MAP
@@ -507,8 +338,6 @@ function exportCSV() {
   toast('Timetable exported as CSV!');
 }
 
-function printSchedule() { window.print(); }
-
 // ═══════════════════════════════════════════════════════════════
 // EVENT HANDLERS
 // ═══════════════════════════════════════════════════════════════
@@ -561,10 +390,10 @@ async function generateTimetable() {
 
   // Animate progress
   const steps = [
-    [15, 'Parsing constraints...'],
-    [35, 'Building slot matrix...'],
-    [55, 'Assigning faculty...'],
-    [75, 'Resolving conflicts...'],
+    [15, 'Sending to Python backend...'],
+    [35, 'Running Backtracking + MRV...'],
+    [55, 'Applying constraints...'],
+    [75, 'Optimizing schedule...'],
     [90, 'Saving to database...'],
   ];
   let stepIdx = 0;
@@ -573,21 +402,9 @@ async function generateTimetable() {
       setProgress(steps[stepIdx][0], steps[stepIdx][1]);
       stepIdx++;
     }
-  }, 180);
+  }, 300);
 
-  await new Promise(r => setTimeout(r, 1100));
-  clearInterval(progressInterval);
-
-  // ── Run all 3 algorithms, pick the one with fewest conflicts ──
-  const results = ['fast', 'balanced', 'thorough'].map(mode =>
-    Scheduler.generate(State.parsed, State.lecturesPerWeek, mode)
-  );
-  State.schedule = results.reduce((best, r) =>
-    r.conflicts.length < best.conflicts.length ? r : best
-  );
-
-  // ── Save to MongoDB via backend API ──
-  setProgress(90, 'Saving to database...');
+  // ── Call Python backend to generate schedule ──
   try {
     const scheduleName = `Schedule — ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;
     const res = await fetch(`${API_BASE}/schedules/generate`, {
@@ -597,17 +414,36 @@ async function generateTimetable() {
         name: scheduleName,
         parsedData: State.parsed,
         lecturesPerWeek: State.lecturesPerWeek,
-        algorithmMode: State.algorithmMode,
         datasetId: State.savedDatasetId || null,
       }),
     });
-    if (res.ok) {
-      setProgress(100, 'Saved to MongoDB ✓');
-    } else {
-      setProgress(100, 'Generated (save failed)');
+
+    clearInterval(progressInterval);
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || 'Server returned an error');
     }
-  } catch {
-    setProgress(100, 'Generated (offline mode)');
+
+    const { data } = await res.json();
+
+    // Use the schedule from the Python backend response
+    State.schedule = {
+      byClass: data.byClass,
+      byFaculty: data.byFaculty,
+      byRoom: data.byRoom,
+      conflicts: data.conflicts || [],
+    };
+
+    setProgress(100, 'Complete ✓');
+
+  } catch (err) {
+    clearInterval(progressInterval);
+    setProgress(0, 'Failed');
+    btn.disabled = false;
+    btn.innerHTML = `⚡ Generate Timetable`;
+    toast('Failed to generate: ' + err.message + '. Is the Python backend running?', 'error');
+    return;
   }
 
   // Render legend
@@ -632,10 +468,9 @@ async function generateTimetable() {
   btn.disabled = false;
   btn.innerHTML = `🔄 Regenerate`;
 
-  const conflictCount = State.schedule.conflicts.length;
   toast(conflictCount === 0
-    ? '✅ Timetable generated & saved to MongoDB!'
-    : `⚠️ Generated with ${conflictCount} conflict(s) — saved to DB`, conflictCount === 0 ? 'success' : 'warn');
+    ? '✅ Timetable generated — Graph Coloring (Welsh-Powell)'
+    : `⚠️ Generated with ${conflictCount} conflict(s)`, conflictCount === 0 ? 'success' : 'warn');
 
   // Refresh history
   loadHistory();

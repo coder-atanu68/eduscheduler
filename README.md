@@ -1,40 +1,50 @@
 # 📅 EduScheduler — Intelligent Timetable Generator
 
-> **DAA Mini Project** | Constraint Satisfaction using Graph Coloring (Welsh-Powell)
-
-A premium web application that helps educational institutions generate optimal weekly class timetables from a simple `.txt` dataset. It guarantees mathematically optimal, conflict-free schedules using graph theory.
+A robust web application designed to help educational institutions generate optimal, conflict-free weekly class timetables. Powered by advanced Graph Theory, EduScheduler transforms a simple text dataset into a comprehensive, exportable schedule in seconds.
 
 ---
 
-## 🚀 Getting Started (Local Development)
+## ✨ Overview
 
-### Prerequisites
-- Python 3.8+
-- pip
+EduScheduler solves the complex Constraint Satisfaction Problem of institutional scheduling by guaranteeing mathematically optimal, conflict-free schedules without brute-force guessing. 
 
-### Installation & Run
+It provides an intuitive interface for uploading constraints (faculty availability, classroom capacities, subjects), automatically generates the schedule, and offers multiple ways to view, analyze, and export the final timetable.
 
-1. **Install Python dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Key Features
+- **Deterministic Scheduling** — Powered by the Welsh-Powell Algorithm.
+- **Drag & Drop Upload** — Seamlessly load `.txt` datasets.
+- **Multi-Perspective Views** — Analyze the timetable by Class, Faculty, or Room.
+- **Live Conflict Reporting** — Transparently exposes any logically unschedulable lectures.
+- **Actionable Analytics** — View total sessions scheduled, efficiency percentages, and conflict counts.
+- **Export & Print** — Download the full schedule as a CSV spreadsheet or print a clean, color-coded layout.
+- **Premium UI** — Responsive, modern design system with unique color-coding per subject.
 
-2. **Start the Flask Backend:**
-   ```bash
-   python app.py
-   ```
+---
 
-3. **Open the App:**
-   Open your browser and navigate to: [http://localhost:5000](http://localhost:5000)
+## ⚙️ How It Works: Graph Coloring
 
-*(The Python backend automatically serves the frontend interface while exposing the `POST /api/schedules/generate` endpoint for the scheduler).*
+The core scheduling engine leverages the **Welsh-Powell Graph Coloring Algorithm** to ensure maximum efficiency.
+
+### Theoretical Mapping:
+- **Vertices (Nodes):** Individual lecture sessions required (e.g., 5 Math classes for Class 10-A).
+- **Edges (Connections):** Constraints connecting two lectures that CANNOT occur simultaneously (e.g., same Teacher or same Class).
+- **Colors:** The available Time Slots across the academic week.
+
+### The Process:
+1. **Parsing:** The unstructured text dataset is parsed into a strict constraint matrix.
+2. **Graph Construction:** An adjacency matrix is built where intersecting constraints create edges.
+3. **Prioritization:** Nodes are sorted descending by their degree (number of constraints).
+4. **Greedy Coloring:** The lowest available "color" (time slot) is assigned to each node, ensuring no adjacent nodes share a color.
+5. **Resource Allocation:** Classrooms are assigned dynamically based on capacity.
+6. **Result Validation:** The mathematically optimal schedule is returned, with explicitly reported un-schedulable nodes handled cleanly.
 
 ---
 
 ## 📋 Dataset Format
 
-Create a `.txt` file with the following sections:
+EduScheduler reads institutional requirements via a simple `.txt` file. 
 
+**Example Structure:**
 ```
 [SUBJECTS]
 Mathematics
@@ -64,58 +74,9 @@ Physics     | 4
 
 ---
 
-## ⚙️ Algorithm (Graph Coloring)
-
-The core scheduling logic uses the **Welsh-Powell Graph Coloring Algorithm** to ensure a highly efficient, deterministic schedule.
-
-### How it maps to Graph Theory:
-- **Vertices (Nodes):** Every individual lecture session required (e.g., 5 Math classes for Class 10-A).
-- **Edges (Connections):** A line is drawn between two lectures if they CANNOT happen at the same time (i.e., they share the same Teacher, or the same Class).
-- **Colors:** The available Time Slots across the week.
-
-### Algorithm Steps:
-1. Parse the text dataset into a list of required sessions.
-2. Build an adjacency matrix where intersecting constraints (same faculty/class) create edges.
-3. Calculate the degree (number of constraints) for each node.
-4. Sort all nodes in descending order of their degree.
-5. Greedily assign the lowest available "color" (time slot) to each node, ensuring no adjacent nodes share a color.
-6. Assign classrooms based on capacity.
-7. Return the mathematically optimal schedule, explicitly reporting any un-schedulable nodes as "Conflicts".
-
----
-
-## 🎨 Features
-
-- **Graph-Theory Scheduler** — 100% deterministic and extremely fast.
-- **Drag & Drop Upload** — load any `.txt` file.
-- **3 Timetable Views** — By Class, By Faculty, By Room.
-- **Live Conflict Report** — transparently exposes unscheduled lectures.
-- **Statistics Dashboard** — sessions scheduled, efficiency %, conflict count.
-- **CSV Export** — download full schedule as spreadsheet.
-- **Color-coded subjects** — each subject has a unique visual identity.
-- **Responsive** — works on mobile, tablet, and desktop.
-
----
-
-## 📁 File Structure
-
-```
-Mini Project/
-├── app.py           ← Flask backend server
-├── scheduler.py     ← Core Welsh-Powell algorithm logic
-├── parser.py        ← Custom text parser
-├── requirements.txt ← Python dependencies
-├── index.html       ← Main application UI
-├── style.css        ← Premium design system
-├── app.js           ← Frontend state logic
-└── sample_data.txt  ← Demo dataset
-```
-
----
-
 ## 👨‍💻 Tech Stack
 
-- **Backend:** Python, Flask
-- **Algorithm:** Pure Python (Graph Coloring / Welsh-Powell)
-- **Frontend:** HTML5, Vanilla CSS, Vanilla JavaScript
-- **Database (Optional/Extensible):** PyMongo (Atlas) for saved histories
+- **Backend Architecture:** Python, Flask
+- **Algorithm Engine:** Pure Python (Graph Theory / Welsh-Powell)
+- **Frontend Interface:** HTML5, Vanilla CSS, Vanilla JavaScript
+- **Database (Extensible):** PyMongo (Atlas)

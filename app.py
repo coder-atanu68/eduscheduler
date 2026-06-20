@@ -125,21 +125,23 @@ def generate_schedule():
         # Run the deterministic Backtracking + MRV algorithm
         result = scheduler.generate(parsed_data, lectures_per_week)
 
-        # Compute stats — exact same as schedules.js lines 177-189
+        # Compute stats — count ALL entries including lab groups [G1]/[G2]
         total_assigned = 0
         total_possible = 0
         class_names = [c['name'] for c in parsed_data['classes']]
 
-        for cls in class_names:
-            for day_slots in (result['byClass'].get(cls) or {}).values():
+        # Count ALL entries in byClass (including lab group keys)
+        for cls_key, days in result['byClass'].items():
+            for day_slots in days.values():
                 for entry in day_slots.values():
                     if entry is not None:
                         total_assigned += 1
 
-        for count in lectures_per_week.values():
-            # JS: totalPossible += count * classes.length
-            # Note: count might be string from JSON, convert to int
-            total_possible += int(count) * len(class_names)
+        # Lab subjects (ending with "Lab") double the count since each class splits into 2 groups
+        for subj, count in lectures_per_week.items():
+            is_lab = subj.strip().endswith('Lab')
+            multiplier = 2 if is_lab else 1
+            total_possible += int(count) * len(class_names) * multiplier
 
         efficiency = round((total_assigned / total_possible) * 100) if total_possible > 0 else 0
 

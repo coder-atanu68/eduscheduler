@@ -3,7 +3,7 @@ set GIT="C:\Program Files\Git\cmd\git.exe"
 %GIT% config --global user.email "coder-atanu68@github.com"
 %GIT% config --global user.name "coder-atanu68"
 %GIT% add .
-%GIT% commit -m "Implement Lab grouping, Best-Fit room allocation, and UI fixes"
+%GIT% commit -m "Lab grouping, Best-Fit room allocation, capacity checks, and UI fixes"
 %GIT% branch -M main
 %GIT% remote remove origin 2>nul
 %GIT% remote add origin https://github.com/coder-atanu68/eduscheduler.git

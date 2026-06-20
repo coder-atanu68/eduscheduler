@@ -73,6 +73,9 @@ def connect_db():
     except Exception as e:
         print(f"[ERROR] MongoDB Connection Error: {e}")
 
+# Call it immediately so Gunicorn connects when importing the app
+connect_db()
+
 
 # ── Helper: Convert ObjectId for JSON ──────────────────────────────────────────
 def serialize_doc(doc):
